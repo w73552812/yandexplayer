@@ -2,66 +2,81 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <title>Yandex Music Party</title>
+    <title>SoundCloud Sync Party</title>
     <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+    <script src="https://w.soundcloud.com/player/api.js"></script>
     <style>
-        body { background: #121212; color: white; font-family: sans-serif; text-align: center; padding-top: 50px; }
-        .card { background: #181818; padding: 30px; border-radius: 20px; display: inline-block; border: 1px solid #333; }
-        iframe { border-radius: 12px; margin-bottom: 20px; border: none; background: #000; }
-        .controls { display: flex; gap: 10px; justify-content: center; }
-        input { padding: 12px; width: 300px; border-radius: 8px; border: 1px solid #444; background: #222; color: white; }
-        button { padding: 12px 20px; border-radius: 8px; border: none; background: #ffcc00; font-weight: bold; cursor: pointer; }
-        #status { margin-top: 15px; font-size: 12px; color: #777; }
+        body { background: #121212; color: white; font-family: 'Inter', sans-serif; text-align: center; padding-top: 50px; }
+        .player-card { background: #1e1e1e; padding: 30px; border-radius: 20px; display: inline-block; box-shadow: 0 15px 35px rgba(0,0,0,0.8); border: 1px solid #333; }
+        #sc-player { border-radius: 12px; margin-bottom: 20px; }
+        .input-group { display: flex; gap: 10px; justify-content: center; margin-top: 10px; }
+        input { background: #2b2b2b; border: 1px solid #444; color: white; padding: 12px; border-radius: 8px; width: 350px; outline: none; }
+        button { background: #f50; border: none; padding: 12px 25px; border-radius: 8px; font-weight: bold; cursor: pointer; color: white; transition: 0.2s; }
+        button:hover { background: #ff6611; transform: scale(1.02); }
+        .status { margin-top: 15px; font-size: 14px; color: #777; }
     </style>
 </head>
 <body>
 
-<div class="card">
-    <h1>💛 Music Sync</h1>
-    <div id="player-area">
-        <iframe id="music-frame" width="450" height="200" src="https://music.yandex.ru/iframe/#track/105156317/22605915"></iframe>
-    </div>
-
-    <div class="controls">
-        <input type="text" id="urlInput" placeholder="Ссылка на трек Яндекс Музыки">
-        <button onclick="sendTrack()">Сменить</button>
-    </div>
-    <div id="status">🔌 Подключение к серверу...</div>
-</div>
-
-<script>
-    const socket = io('http://localhost:3000');
-    const frame = document.getElementById('music-frame');
-    const status = document.getElementById('status');
-
-    socket.on('connect', () => { 
-        status.innerText = "🟢 Сервер онлайн"; 
-        status.style.color = "#ffcc00";
-    });
-
-    function sendTrack() {
-        const input = document.getElementById('urlInput');
-        let url = input.value;
-
-        // Регулярное выражение для поиска ID альбома и трека
-        const match = url.match(/album\/(\d+)\/track\/(\d+)/);
+    <div class="player-card">
+        <h1>🟠 SoundCloud Sync</h1>
         
-        if (match) {
-            const data = { albumId: match[1], trackId: match[2] };
-            socket.emit('yandex_change', data);
-            input.value = "";
-        } else {
-            alert("Вставь ссылку вида: music.yandex.ru/album/XXX/track/YYY");
+        <div id="wrapper">
+            <iframe id="sc-player" width="450" height="166" scrolling="no" frameborder="no" allow="autoplay" 
+                src="https://w.soundcloud.com/player/?url=https%3A//api.soundcloud.com/tracks/1148784325&color=%23ff5500&auto_play=false&hide_related=false&show_comments=true&show_user=true&show_reposts=false&show_teaser=true">
+            </iframe>
+        </div>
+
+        <div class="input-group">
+            <input type="text" id="trackUrl" placeholder="Вставьте ссылку на трек SoundCloud">
+            <button onclick="changeTrack()">Сменить у всех</button>
+        </div>
+        
+        <div class="status" id="conn-status">📡 Подключение...</div>
+    </div>
+
+    <script>
+        const socket = io('http://localhost:3000');
+        const widget = SC.Widget(document.getElementById('sc-player'));
+        const statusText = document.getElementById('conn-status');
+
+        socket.on('connect', () => {
+            statusText.innerText = "🟢 Сервер онлайн";
+            statusText.style.color = "#ff5500";
+        });
+
+        // Функция смены трека
+        function changeTrack() {
+            const url = document.getElementById('trackUrl').value.trim();
+            if (url) {
+                socket.emit('sc_change', url);
+                document.getElementById('trackUrl').value = "";
+            }
         }
-    }
 
-    socket.on('yandex_sync', (data) => {
-        // Формируем новую ссылку для iframe
-        const newSrc = `https://music.yandex.ru/iframe/#track/${data.trackId}/${data.albumId}`;
-        console.log("🔄 Обновляем плеер:", newSrc);
-        frame.src = newSrc;
-    });
-</script>
+        // Слушаем команды от сервера
+        socket.on('sc_sync', (newUrl) => {
+            console.log("🔄 Загружаем трек:", newUrl);
+            widget.load(newUrl, {
+                auto_play: true,
+                show_artwork: true,
+                color: "#ff5500"
+            });
+        });
 
+        // (Опционально) Синхронизация Play/Pause
+        widget.bind(SC.Widget.Events.PLAY, () => {
+            socket.emit('sc_event', { type: 'play' });
+        });
+
+        widget.bind(SC.Widget.Events.PAUSE, () => {
+            socket.emit('sc_event', { type: 'pause' });
+        });
+
+        socket.on('sc_server_event', (data) => {
+            if (data.type === 'play') widget.play();
+            if (data.type === 'pause') widget.pause();
+        });
+    </script>
 </body>
 </html>
