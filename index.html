@@ -2,80 +2,101 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <title>SoundCloud Sync Party</title>
+    <title>SoundCloud Party + Queue</title>
     <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
     <script src="https://w.soundcloud.com/player/api.js"></script>
     <style>
-        body { background: #121212; color: white; font-family: 'Inter', sans-serif; text-align: center; padding-top: 50px; }
-        .player-card { background: #1e1e1e; padding: 30px; border-radius: 20px; display: inline-block; box-shadow: 0 15px 35px rgba(0,0,0,0.8); border: 1px solid #333; }
-        #sc-player { border-radius: 12px; margin-bottom: 20px; }
-        .input-group { display: flex; gap: 10px; justify-content: center; margin-top: 10px; }
-        input { background: #2b2b2b; border: 1px solid #444; color: white; padding: 12px; border-radius: 8px; width: 350px; outline: none; }
-        button { background: #f50; border: none; padding: 12px 25px; border-radius: 8px; font-weight: bold; cursor: pointer; color: white; transition: 0.2s; }
-        button:hover { background: #ff6611; transform: scale(1.02); }
-        .status { margin-top: 15px; font-size: 14px; color: #777; }
+        body { background: #121212; color: white; font-family: 'Segoe UI', sans-serif; display: flex; height: 100vh; margin: 0; overflow: hidden; }
+        
+        /* Левая часть: Плеер */
+        .main-content { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; border-right: 1px solid #333; }
+        
+        /* Правая часть: Очередь */
+        .sidebar { width: 350px; background: #181818; display: flex; flex-direction: column; padding: 20px; }
+        
+        .player-card { background: #1e1e1e; padding: 25px; border-radius: 15px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
+        
+        .queue-list { flex: 1; overflow-y: auto; margin-top: 20px; text-align: left; }
+        .queue-item { background: #282828; padding: 10px; border-radius: 8px; margin-bottom: 10px; font-size: 14px; border: 1px solid #383838; }
+        
+        .input-group { display: flex; flex-direction: column; gap: 10px; width: 100%; }
+        input { background: #2b2b2b; border: 1px solid #444; color: white; padding: 12px; border-radius: 8px; outline: none; }
+        button { background: #f50; border: none; padding: 12px; border-radius: 8px; font-weight: bold; cursor: pointer; color: white; }
+        button.add-btn { background: #333; margin-top: 5px; }
+        
+        h2 { color: #f50; margin-top: 0; }
+        #status { font-size: 12px; color: #777; margin-top: 10px; }
     </style>
 </head>
 <body>
 
-    <div class="player-card">
-        <h1>🟠 SoundCloud Sync</h1>
-        
-        <div id="wrapper">
+    <div class="main-content">
+        <div class="player-card">
+            <h2>🟠 Сейчас играет</h2>
             <iframe id="sc-player" width="450" height="166" scrolling="no" frameborder="no" allow="autoplay" 
-                src="https://w.soundcloud.com/player/?url=https%3A//api.soundcloud.com/tracks/1148784325&color=%23ff5500&auto_play=false&hide_related=false&show_comments=true&show_user=true&show_reposts=false&show_teaser=true">
+                src="https://w.soundcloud.com/player/?url=https%3A//api.soundcloud.com/tracks/1148784325&color=%23ff5500&auto_play=false">
             </iframe>
+            <div id="status">📡 Подключение...</div>
         </div>
+    </div>
 
+    <div class="sidebar">
+        <h2>📜 Очередь</h2>
         <div class="input-group">
-            <input type="text" id="trackUrl" placeholder="Вставьте ссылку на трек SoundCloud">
-            <button onclick="changeTrack()">Сменить у всех</button>
+            <input type="text" id="trackUrl" placeholder="Ссылка на трек SoundCloud">
+            <button onclick="addToQueue()">Добавить в очередь</button>
         </div>
         
-        <div class="status" id="conn-status">📡 Подключение...</div>
+        <div class="queue-list" id="queue-container">
+            </div>
+        
+        <button class="add-btn" onclick="nextTrack()">Следующий трек ⏭</button>
     </div>
 
     <script>
         const socket = io('http://localhost:3000');
         const widget = SC.Widget(document.getElementById('sc-player'));
-        const statusText = document.getElementById('conn-status');
+        let queue = [];
 
         socket.on('connect', () => {
-            statusText.innerText = "🟢 Сервер онлайн";
-            statusText.style.color = "#ff5500";
+            document.getElementById('status').innerText = "🟢 Сервер онлайн";
         });
 
-        // Функция смены трека
-        function changeTrack() {
+        // Добавление в очередь через сервер
+        function addToQueue() {
             const url = document.getElementById('trackUrl').value.trim();
             if (url) {
-                socket.emit('sc_change', url);
+                socket.emit('add_to_queue', url);
                 document.getElementById('trackUrl').value = "";
             }
         }
 
-        // Слушаем команды от сервера
-        socket.on('sc_sync', (newUrl) => {
-            console.log("🔄 Загружаем трек:", newUrl);
-            widget.load(newUrl, {
-                auto_play: true,
-                show_artwork: true,
-                color: "#ff5500"
+        // Обновление списка очереди у всех
+        socket.on('update_queue', (serverQueue) => {
+            queue = serverQueue;
+            const container = document.getElementById('queue-container');
+            container.innerHTML = "";
+            
+            queue.forEach((url, index) => {
+                const item = document.createElement('div');
+                item.className = 'queue-item';
+                item.innerText = `${index + 1}. ${url.split('/').pop()}`; // Показываем конец ссылки как название
+                container.appendChild(item);
             });
         });
 
-        // (Опционально) Синхронизация Play/Pause
-        widget.bind(SC.Widget.Events.PLAY, () => {
-            socket.emit('sc_event', { type: 'play' });
+        // Команда на проигрывание следующего трека
+        function nextTrack() {
+            socket.emit('request_next');
+        }
+
+        socket.on('play_track', (url) => {
+            widget.load(url, { auto_play: true, color: "#ff5500" });
         });
 
-        widget.bind(SC.Widget.Events.PAUSE, () => {
-            socket.emit('sc_event', { type: 'pause' });
-        });
-
-        socket.on('sc_server_event', (data) => {
-            if (data.type === 'play') widget.play();
-            if (data.type === 'pause') widget.pause();
+        // Когда трек заканчивается сам — просим следующий
+        widget.bind(SC.Widget.Events.FINISH, () => {
+            nextTrack();
         });
     </script>
 </body>
