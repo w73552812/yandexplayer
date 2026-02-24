@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Yandex Music Party</title>
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+    <style>
+        body { background: #121212; color: white; font-family: sans-serif; text-align: center; padding-top: 50px; }
+        .card { background: #181818; padding: 30px; border-radius: 20px; display: inline-block; border: 1px solid #333; }
+        iframe { border-radius: 12px; margin-bottom: 20px; border: none; background: #000; }
+        .controls { display: flex; gap: 10px; justify-content: center; }
+        input { padding: 12px; width: 300px; border-radius: 8px; border: 1px solid #444; background: #222; color: white; }
+        button { padding: 12px 20px; border-radius: 8px; border: none; background: #ffcc00; font-weight: bold; cursor: pointer; }
+        #status { margin-top: 15px; font-size: 12px; color: #777; }
+    </style>
+</head>
+<body>
+
+<div class="card">
+    <h1>💛 Music Sync</h1>
+    <div id="player-area">
+        <iframe id="music-frame" width="450" height="200" src="https://music.yandex.ru/iframe/#track/105156317/22605915"></iframe>
+    </div>
+
+    <div class="controls">
+        <input type="text" id="urlInput" placeholder="Ссылка на трек Яндекс Музыки">
+        <button onclick="sendTrack()">Сменить</button>
+    </div>
+    <div id="status">🔌 Подключение к серверу...</div>
+</div>
+
+<script>
+    const socket = io('http://localhost:3000');
+    const frame = document.getElementById('music-frame');
+    const status = document.getElementById('status');
+
+    socket.on('connect', () => { 
+        status.innerText = "🟢 Сервер онлайн"; 
+        status.style.color = "#ffcc00";
+    });
+
+    function sendTrack() {
+        const input = document.getElementById('urlInput');
+        let url = input.value;
+
+        // Регулярное выражение для поиска ID альбома и трека
+        const match = url.match(/album\/(\d+)\/track\/(\d+)/);
+        
+        if (match) {
+            const data = { albumId: match[1], trackId: match[2] };
+            socket.emit('yandex_change', data);
+            input.value = "";
+        } else {
+            alert("Вставь ссылку вида: music.yandex.ru/album/XXX/track/YYY");
+        }
+    }
+
+    socket.on('yandex_sync', (data) => {
+        // Формируем новую ссылку для iframe
+        const newSrc = `https://music.yandex.ru/iframe/#track/${data.trackId}/${data.albumId}`;
+        console.log("🔄 Обновляем плеер:", newSrc);
+        frame.src = newSrc;
+    });
+</script>
+
+</body>
+</html>
