@@ -2,11 +2,17 @@ const io = require('socket.io')(3000, {
     cors: { origin: "*" }
 });
 
-console.log("✅ Сервер запущен на порту 3000");
+console.log("🟠 SoundCloud Sync Server запущен на порту 3000");
 
 io.on('connection', (socket) => {
-    socket.on('yandex_change', (data) => {
-        console.log("📡 Переключение трека:", data);
-        io.emit('yandex_sync', data);
+    // Смена трека для всех
+    socket.on('sc_change', (url) => {
+        console.log("🎵 Новый трек в очереди:", url);
+        io.emit('sc_sync', url);
+    });
+
+    // Пересылка команд управления (пауза/старт)
+    socket.on('sc_event', (data) => {
+        socket.broadcast.emit('sc_server_event', data);
     });
 });
